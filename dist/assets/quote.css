@@ -1,0 +1,22 @@
+
+.quote-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: clamp(24px, 5vw, 64px);
+  align-items: start;
+}
+.quote-intro h1 { font-size: clamp(36px, 4.3vw, 58px); }
+.quote-intro a { overflow-wrap: anywhere; }
+.quote-card {
+  min-width: 0;
+  padding: clamp(18px, 3vw, 36px);
+  background: white;
+  border: 1px solid #e7dfcf;
+  border-radius: 14px;
+}
+.quote-card button { width: 100%; background: #b54600; border-color: #b54600; }
+.quote-card button:disabled { opacity: .75; cursor: wait; }
+.quote-card .status { margin: 0; }
+@media (max-width: 850px) {
+  .quote-layout { grid-template-columns: minmax(0, 1fr); }
+}
