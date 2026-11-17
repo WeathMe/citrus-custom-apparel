@@ -9,7 +9,45 @@ function reply(status, message, request) {
   return new Response(message, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 }
 
-export async function onRequestPost({ request, env }) {
+
+async function sendConfirmation(env, email, apparel, quantity) {
+  // Keep the receipt fixed: never relay arbitrary project text or attachments.
+  const text = [
+    'Thanks for contacting Citrus Custom Apparel!',
+    '',
+    'We received your custom apparel quote request and will review the details.',
+    'Apparel: ' + apparel,
+    'Quantity: ' + quantity,
+    '',
+    'We will reply by email with questions or the next steps for your quote.',
+    'Need to add something? Reply to this email to reach our team.',
+    '',
+    'Free local delivery in Citrus and Hernando counties.',
+    'Typical production turnaround is 7–10 business days after artwork approval and payment. Timing is confirmed with your quote.',
+    '',
+    'This confirms your inquiry only; it is not an order confirmation or a production booking.',
+    '',
+    'Citrus Custom Apparel',
+    'https://citruscustomapparel.com',
+    'hello@citruscustomapparel.com'
+  ].join('\n');
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: env.QUOTE_FROM_EMAIL, to: [email], reply_to: inbox,
+        subject: 'We received your quote request | Citrus Custom Apparel', text }),
+      signal: AbortSignal.timeout(12000)
+    });
+    if (!response.ok || !(await response.json()).id) {
+      console.error('Quote confirmation email was not accepted by the email provider.');
+    }
+  } catch {
+    console.error('Quote confirmation email could not be sent.');
+  }
+}
+
+export async function onRequestPost({ request, env, waitUntil }) {
   const send = (status, message) => reply(status, message, request);
   if (request.headers.get('Origin') !== new URL(request.url).origin) {
     return send(403, 'Please submit the form from the quote page.');
@@ -65,6 +103,10 @@ export async function onRequestPost({ request, env }) {
       signal: AbortSignal.timeout(12000)
     });
     if (!response.ok || !(await response.json()).id) return send(502, support);
+    // A receipt failure must not turn a successfully received inquiry into an error.
+    const confirmation = sendConfirmation(env, email, value('Apparel'), quantity);
+    if (typeof waitUntil === 'function') waitUntil(confirmation);
+    else await confirmation;
     return send(200, 'Thanks! We received your request and will reply by email.');
   } catch {
     return send(502, support);
