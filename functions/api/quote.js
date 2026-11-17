@@ -10,7 +10,7 @@ function reply(status, message, request) {
 }
 
 
-async function sendConfirmation(env, email, apparel, quantity) {
+async function sendConfirmation(env, email, apparel, quantity, locations) {
   // Keep the receipt fixed: never relay arbitrary project text or attachments.
   const text = [
     'Thanks for contacting Citrus Custom Apparel!',
@@ -18,6 +18,7 @@ async function sendConfirmation(env, email, apparel, quantity) {
     'We received your custom apparel quote request and will review the details.',
     'Apparel: ' + apparel,
     'Quantity: ' + quantity,
+    'Print locations: ' + locations.join(', '),
     '',
     'We will reply by email with questions or the next steps for your quote.',
     'Need to add something? Reply to this email to reach our team.',
@@ -74,6 +75,15 @@ export async function onRequestPost({ request, env, waitUntil }) {
     return send(400, 'Check your name, email, apparel type, quantity, ZIP code, and project details.');
   }
 
+  const allowedLocations = ["Left chest","Full front","Full back","Left sleeve","Right sleeve","Other placement","Not sure — help me choose"];
+  const locations = [...new Set(fields.getAll('Print locations'))];
+  const otherPlacement = value('Other placement');
+  if (!locations.length || locations.some(location => !allowedLocations.includes(location)) ||
+      (locations.includes('Not sure — help me choose') && locations.length > 1) ||
+      (locations.includes('Other placement') && (!otherPlacement || otherPlacement.length > 250))) {
+    return send(400, 'Choose your print locations and describe any other placement.');
+  }
+
   const artwork = fields.get('Artwork');
   const attachments = [];
   if (artwork instanceof File && artwork.size) {
@@ -93,7 +103,8 @@ export async function onRequestPost({ request, env, waitUntil }) {
   }
 
   const labels = ['Name','Email','Phone','Business or group','Apparel','Quantity','Preferred deadline','Delivery ZIP','Project details'];
-  const text = labels.map((label) => label + ': ' + value(label).slice(0, label === 'Project details' ? 4000 : 254)).join('\n');
+  const text = 'Print locations: ' + locations.join(', ') + '\n' +
+    (locations.includes('Other placement') ? 'Other placement: ' + otherPlacement + '\n' : '') + labels.map((label) => label + ': ' + value(label).slice(0, label === 'Project details' ? 4000 : 254)).join('\n');
   try {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -104,7 +115,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
     });
     if (!response.ok || !(await response.json()).id) return send(502, support);
     // A receipt failure must not turn a successfully received inquiry into an error.
-    const confirmation = sendConfirmation(env, email, value('Apparel'), quantity);
+    const confirmation = sendConfirmation(env, email, value('Apparel'), quantity, locations);
     if (typeof waitUntil === 'function') waitUntil(confirmation);
     else await confirmation;
     return send(200, 'Thanks! We received your request and will reply by email.');
